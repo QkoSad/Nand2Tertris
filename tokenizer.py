@@ -82,6 +82,7 @@ def token_type(t):
         return 'symbol'
     else:
         return 'identifier'
+    # TODO remove this one make the other one work
 
 
 class CompilationEngine:
@@ -93,7 +94,7 @@ class CompilationEngine:
         self.sub_table_index = -1
         self.class_name = ''
         self.vmwriter = VMWriter(full_path1)
-        self.tmp = []
+        self.current_vm = []
 
     def write_token(self):
         if self.tokenizer.token_type() == 'stringConstant':
@@ -117,6 +118,7 @@ class CompilationEngine:
             if self.tokenizer.token in ['constructor', 'function', 'method']:
                 self.compile_subroutine()
         self.tokenizer.advance()
+        self.sub_table.pop()
         # self.print_sub_table()
 
     def compile_class_var_dec(self):
@@ -139,12 +141,16 @@ class CompilationEngine:
         self.sub_table_index += 1
         if self.tokenizer.token == 'method':
             self.sub_table[self.sub_table_index].start_subroutine('this', self.class_name)
-        self.tokenizer.advance()
-        self.tokenizer.advance()
-        self.tokenizer.advance()
-        self.tokenizer.advance()
+        self.tokenizer.advance()  # subroutine type ->
+        self.tokenizer.advance()  # subroutine class name ->
+        self.tokenizer.advance()  # subroutine name ->
+        self.tokenizer.advance()  # ( ->
         self.compile_parameter_list()
-        self.tokenizer.advance()
+        self.tokenizer.advance()  # ) ->
+        arg_count = self.sub_table[self.sub_table_index].var_count()
+        self.vmwriter.write_push('constant', str(arg_count))
+        self.vmwriter.write_call('Memory.alloc', 1)
+        self.vmwriter.write_pop('pointer', 0)  # TODO i have to pop this when it is constructor needs more info
         while self.tokenizer.token != '}':
             if self.tokenizer.token == 'var':
                 self.compile_var_dec()
@@ -218,7 +224,7 @@ class CompilationEngine:
 
     def compile_let(self):
         self.tokenizer.advance()  # let ->
-        self.tmp.append(self.tokenizer.token)
+        self.current_vm.append(self.tokenizer.token)
         self.tokenizer.advance()  # var_name ->
         # TODO can add validation not a fan since this is the only validation
         if self.tokenizer.token == '[':
@@ -228,9 +234,9 @@ class CompilationEngine:
         self.tokenizer.advance()  # = ->
         self.compile_expression()
         self.tokenizer.advance()  # ; ->
-        self.vmwriter.write_pop(self.sub_table[self.sub_table_index].kind_of(self.tmp[-1]),
-                                self.sub_table[self.sub_table_index].index_of(self.tmp[-1]))
-        self.tmp.pop()
+        self.vmwriter.write_pop(self.sub_table[self.sub_table_index].kind_of(self.current_vm[-1]),
+                                self.sub_table[self.sub_table_index].index_of(self.current_vm[-1]))
+        self.current_vm.pop()
 
     def compile_while(self):
         self.tokenizer.advance()  # while ->
@@ -254,6 +260,7 @@ class CompilationEngine:
         self.tokenizer.advance()
         if self.tokenizer.token != ';':
             self.compile_expression()
+        self.vmwriter.write_return()
         self.tokenizer.advance()
 
     def compile_if(self):
@@ -281,11 +288,11 @@ class CompilationEngine:
     def compile_expression(self):
         self.compile_term()
         while self.tokenizer.token in ['+', '-', '*', '/', '|', '=', '>', '<']:
-            self.tmp.append(self.tokenizer.token)
+            self.current_vm.append(self.tokenizer.token)
             self.tokenizer.advance()  # symbol ->
             self.compile_term()
-            self.vmwriter.write_arithmetic(self.tmp[-1])
-            self.tmp.pop()
+            self.vmwriter.write_arithmetic(self.current_vm[-1])
+            self.current_vm.pop()
 
     def compile_term(self):
         if self.tokenizer.token == '(':  # expression ()
@@ -293,13 +300,13 @@ class CompilationEngine:
             self.compile_expression()
             self.tokenizer.advance()  # ) ->
         elif self.tokenizer.token in ['~', '-']:  # uniry op
-            self.tmp.append(self.tokenizer.token)
+            self.current_vm.append(self.tokenizer.token)
             self.tokenizer.advance()  # ~ or - ->
             self.compile_term()
-            self.vmwriter.write_arithmetic(self.tmp[-1])
-            self.tmp.pop()
+            self.vmwriter.write_arithmetic(self.current_vm[-1])
+            self.current_vm.pop()
         elif self.tokenizer.token_type() != 'symbol':
-            self.tmp.append(self.tokenizer.token)
+            self.current_vm.append(self.tokenizer.token)
             self.tokenizer.advance()  # integer,string,keyword,varnname,subroutine_name,class_name,var_name ->
             if self.tokenizer.token == '[':  # varname []
                 self.tokenizer.advance()  # [ ->
@@ -309,8 +316,8 @@ class CompilationEngine:
                 self.tokenizer.advance()  # ( ->
                 c = self.compile_expression_list()
                 self.tokenizer.advance()  # ) ->
-                self.vmwriter.write_call(self.tmp[-1], c)
-                self.tmp.pop()
+                self.vmwriter.write_call(self.current_vm[-1], c)
+                self.current_vm.pop()
             # methods later
             #     elif self.tokenizer.token == '.':  # class anem, var name .
             #         self.tokenizer.advance()  # . ->
@@ -318,14 +325,14 @@ class CompilationEngine:
             #         self.tokenizer.advance()  # ( ->
             #         self.compile_expression_list()
             #         self.tokenizer.advance()  # ) ->
-            elif token_type(self.tmp[-1]) == 'integerConstant':
-                self.vmwriter.write_push('constant', self.tmp[-1])
-                self.tmp.pop()
-            elif token_type(self.tmp[-1]) == 'identifier':
-                self.vmwriter.write_push(self.sub_table[self.sub_table_index].kind_of(self.tmp[-1]),
-                                         self.sub_table[self.sub_table_index].index_of(self.tmp[-1]))
-                self.tmp.pop()
-                # TODO currently checking only the first table need to check all probably a function 
+            elif token_type(self.current_vm[-1]) == 'integerConstant':
+                self.vmwriter.write_push('constant', self.current_vm[-1])
+                self.current_vm.pop()
+            elif token_type(self.current_vm[-1]) == 'identifier':
+                self.vmwriter.write_push(self.sub_table[self.sub_table_index].kind_of(self.current_vm[-1]),
+                                         self.sub_table[self.sub_table_index].index_of(self.current_vm[-1]))
+                self.current_vm.pop()
+                # TODO currently checking only the first table need to check all probably a function
                 #  that checks all and returns index
 
     def compile_expression_list(self):
@@ -403,6 +410,7 @@ class SymbolTable:
                 return i.s_index
 
 
+# TODO i dont think index should rest when i create a new table since it goes back and searcher for them
 class VMWriter:
     def __init__(self, vm_path):
         self.my_vm = open(vm_path, "w+")
