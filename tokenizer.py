@@ -1,7 +1,7 @@
 import re
 import os
 
-
+#TODO separate clases in different modules
 class Tokenizer:
 
     def __init__(self):
