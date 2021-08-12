@@ -1,7 +1,8 @@
 import re
 import os
 
-#TODO separate clases in different modules
+
+# TODO separate clases in different modules
 class Tokenizer:
 
     def __init__(self):
@@ -72,7 +73,7 @@ class Tokenizer:
 class CompilationEngine:
     def __init__(self, tokenizer, full_path1):
         self.string = ''
-        self.tab = 0
+        self.array_count = self.tab = 0
         self.tokenizer = tokenizer
         self.sym_table = []
         self.class_name = ''
@@ -130,7 +131,7 @@ class CompilationEngine:
         sub_type = self.tokenizer.token
         if sub_type == 'method':
             self.sym_table[-1].start_subroutine('this', self.class_name)
-        self.tokenizer.advance()  # subroutine type(function|methond|constructor) ->
+        self.tokenizer.advance()  # subroutine type(function|method|constructor) ->
         self.tokenizer.advance()  # subroutine kind(int|void|etc..) ->
         self.tokenizer.advance()  # subroutine name ->
         self.tokenizer.advance()  # ( ->
@@ -153,6 +154,8 @@ class CompilationEngine:
                 self.compile_var_dec()
             elif self.tokenizer.token in ['let', 'if', 'while', 'do', 'return']:
                 self.compile_statements()
+        if sub_type == 'constructor':
+            self.vmwriter.write_push('pointer', 0)  # TODO this is for constructor not sure if for all,most likely not
         self.tokenizer.advance()
         self.print_sym_table()
         self.sym_table.pop()
@@ -204,19 +207,23 @@ class CompilationEngine:
                 break
 
     def compile_do(self):
-        self.tokenizer.advance()
-        self.tokenizer.advance()
+        self.tokenizer.advance()  # do ->
+        fname = self.tokenizer.token
+        self.tokenizer.advance()  # name ->
         if self.tokenizer.token == '(':
-            self.tokenizer.advance()
-            self.compile_expression_list()
-            self.tokenizer.advance()
+            self.tokenizer.advance()  # ( ->
+            count = self.compile_expression_list()
+            self.tokenizer.advance()  # ) ->
+            self.vmwriter.write_call(f'{self.class_name}.{fname}', count)
         elif self.tokenizer.token == '.':
-            self.tokenizer.advance()
-            self.tokenizer.advance()
-            self.tokenizer.advance()
-            self.compile_expression_list()
-            self.tokenizer.advance()
-        self.tokenizer.advance()
+            self.tokenizer.advance()  # . ->
+            fname = f'{self.tokenizer.token}.{fname}'
+            self.tokenizer.advance()  # name ->
+            self.tokenizer.advance()  # ( ->
+            count = self.compile_expression_list()
+            self.tokenizer.advance()  # ) ->
+            self.vmwriter.write_call(f'{fname}', count)
+        self.tokenizer.advance()  # ; ->
 
     def compile_let(self):
         self.tokenizer.advance()  # let ->
@@ -288,6 +295,16 @@ class CompilationEngine:
             self.compile_term()
             self.vmwriter.write_arithmetic(self.current_vm[-1])
             self.current_vm.pop()
+        if self.array_count == 2:
+            self.vmwriter.write_pop('pointer', 1)
+            self.vmwriter.write_push('that', 0)
+            self.vmwriter.write_pop('temp', 0)
+            self.vmwriter.write_pop('pointer', 1)
+            self.vmwriter.write_push('temp', 0)
+            self.vmwriter.write_pop('that', 0)
+        elif self.array_count == 1:
+            self.vmwriter.write_pop('that', 0)
+        self.array_count = 0
 
     def compile_term(self):
         if self.tokenizer.token == '(':  # expression ()
@@ -309,23 +326,28 @@ class CompilationEngine:
                 self.compile_expression()
                 self.vmwriter.write_push(*self.search_sym(self.current_vm[-1]))
                 self.vmwriter.write_arithmetic('+')
+                self.vmwriter.write_push('pointer', 1)
                 self.tokenizer.advance()  # ] ->
+                self.array_count += 1
             elif self.tokenizer.token == '(':  # subroutine_name ()
                 self.tokenizer.advance()  # ( ->
-                c = self.compile_expression_list()
+                count = self.compile_expression_list()
                 self.tokenizer.advance()  # ) ->
-                self.vmwriter.write_call(self.current_vm[-1], c)
+                self.vmwriter.write_call(f'{self.class_name}.{self.current_vm[-1]}', count)
                 self.current_vm.pop()
-            #     elif self.tokenizer.token == '.':  # method
-            #         self.tokenizer.advance()  # . ->
-            #         self.tokenizer.advance()  # subroutine name ->
-            #         self.tokenizer.advance()  # ( ->
-            #         self.compile_expression_list()
-            #         self.tokenizer.advance()  # ) ->
+            elif self.tokenizer.token == '.':  # method
+                self.tokenizer.advance()  # . ->
+                fname = self.tokenizer.token
+                self.tokenizer.advance()  # subroutine name ->
+                self.tokenizer.advance()  # ( ->
+                count = self.compile_expression_list()
+                self.tokenizer.advance()  # ) ->
+                self.vmwriter.write_call(f'{self.current_vm[-1]}.{fname}', count)
             elif self.tokenizer.token_type(self.current_vm[-1]) == 'stringConstant':
-                for item, index in enumerate(self.current_vm[-1]):
+                for index, item in enumerate(self.current_vm[-1]):
+                    self.vmwriter.write_push('constant', ord(item))
                     self.vmwriter.write_call('String.appendChar', 1)
-                # TODO String constants are created using the OS constructor String.new(length)
+                #  String constants are created using the OS constructor String.new(length)
                 #  String assignments like x="cc...c" are handled using a series of calls to the
                 #  OS routine String.appendChar(nextChar).
             elif self.tokenizer.token_type(self.current_vm[-1]) == 'integerConstant':
@@ -393,6 +415,8 @@ class SymbolTable:
             if i.s_name == s_name:
                 if i.s_kind == 'var':
                     return 'local'
+                elif i.s_kind == 'field':
+                    return 'this'
                 else:
                     return i.s_kind
         return None
