@@ -21,8 +21,10 @@ class CompilationEngine:
     def search_sym(self, current_vm):
         if self.sym_table[-1].kind_of(current_vm) is not None:
             return self.sym_table[-1].kind_of(current_vm), self.sym_table[-1].index_of(current_vm)
-        for i in range(len(self.sym_table), -2):
-            if self.sym_table[i].kind_of(current_vm) in ('static', 'field'):
+        for i in range(len(self.sym_table) - 2, -1,
+                       -1):  # start from the amount of sym_tables -2 so it starts from one below the current,
+            # until it is bigger than -1, walking it backwards
+            if self.sym_table[i].kind_of(current_vm) in ('static', 'this'):
                 return self.sym_table[i].kind_of(current_vm), self.sym_table[i].index_of(current_vm)
 
     def write_token(self):
@@ -48,6 +50,7 @@ class CompilationEngine:
         self.tokenizer.advance()
         # self.print_sym_table()
         self.sym_table.pop()
+        self.vmwriter.close_vm_file()
 
     def compile_class_var_dec(self):
         var_kind = tokenizer_main.token
@@ -179,23 +182,20 @@ class CompilationEngine:
         self.current_vm.pop()
 
     def compile_while(self):
-        self.recursion_index = 0
         self.tokenizer.advance()  # while ->
+        label1 = self.vmwriter.label_index
         self.vmwriter.write_lable(self.vmwriter.label_index)
         self.vmwriter.label_index += 1
         self.tokenizer.advance()  # ( ->
         self.compile_expression()
         self.tokenizer.advance()  # ) ->
+        label2 = self.vmwriter.label_index
         self.vmwriter.write_if(self.vmwriter.label_index)
-        self.vmwriter.label_index += 1
         self.tokenizer.advance()  # { ->
         self.compile_statements()
         self.tokenizer.advance()  # } ->
-        self.vmwriter.label_index -= 2
-        self.vmwriter.write_goto(self.vmwriter.label_index - self.recursion_index)
-        self.vmwriter.label_index += 1
-        self.vmwriter.write_lable(self.vmwriter.label_index - self.recursion_index)
-        self.recursion_index += 2
+        self.vmwriter.write_goto(label1)
+        self.vmwriter.write_lable(label2)
         self.vmwriter.label_index += 1
 
     def compile_return(self):
@@ -206,27 +206,25 @@ class CompilationEngine:
         self.tokenizer.advance()  # ; ->
 
     def compile_if(self):
-        self.recursion_index = 0
         self.tokenizer.advance()  # if ->
         self.tokenizer.advance()  # ( ->
         self.compile_expression()
         self.tokenizer.advance()  # ) ->
+        label1 = self.vmwriter.label_index
         self.vmwriter.write_if(self.vmwriter.label_index)
         self.vmwriter.label_index += 1
         self.tokenizer.advance()  # { ->
         self.compile_statements()
         self.tokenizer.advance()  # } ->
+        label2 = self.vmwriter.label_index
         self.vmwriter.write_goto(self.vmwriter.label_index)
-        self.vmwriter.label_index -= 1
-        self.vmwriter.write_lable(self.vmwriter.label_index - self.recursion_index)
-        self.vmwriter.label_index += 1
-        self.recursion_index += 2
+        self.vmwriter.write_lable(label1)
         if self.tokenizer.token == 'else':
             self.tokenizer.advance()  # else ->
             self.tokenizer.advance()  # { ->
             self.compile_statements()
             self.tokenizer.advance()  # } ->
-        self.vmwriter.write_lable(self.vmwriter.label_index)
+        self.vmwriter.write_lable(label2)
         self.vmwriter.label_index += 1
 
     def compile_expression(self):
@@ -329,13 +327,13 @@ class CompilationEngine:
 
 
 if __name__ == '__main__':
-    path = 'C:/Users/SQA-AGrudev/Desktop/nand2tetris/projects/11/test'
+    path = 'C:/Users/AGrudev/Desktop/nand2tetris/projects/11/test'
     for root, dirs, files in os.walk(path, topdown=False):
         for name in files:
             if name[-4:] == 'jack':
                 tokenizer_main = Tokenizer()
                 tokenizer_main.clear_file(path + '/' + name)
-                print(name+'\n\n')
+                print(name + '\n\n')
                 full_path = path + '/' + name[:-4] + 'vm'
                 comp_eng_main = CompilationEngine(tokenizer_main, full_path)
                 comp_eng_main.compile_class()
