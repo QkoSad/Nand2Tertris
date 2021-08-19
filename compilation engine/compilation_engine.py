@@ -7,15 +7,16 @@ from symbol_table import SymbolTable
 # TODO add names to variables when you call for them, aka current_vm_append(thingtobeappended=blablac)
 
 class CompilationEngine:
-    def __init__(self, tokenizer, full_path1):
+    def __init__(self, tokenizer, full_path_vm):
         self.string = ''
         self.array_count = self.tab = 0
         self.tokenizer = tokenizer
         self.sym_table = []
         self.class_name = ''
-        self.vmwriter = VMWriter(full_path1)
+        self.vmwriter = VMWriter(full_path_vm)
         self.current_vm = []  # used to reverse some of the commands, eg a+b need to be a b +
         self.function_type = ''
+        self.recursion_index = 0
 
     def search_sym(self, current_vm):
         if self.sym_table[-1].kind_of(current_vm) is not None:
@@ -76,7 +77,6 @@ class CompilationEngine:
         self.tokenizer.advance()  # ( ->
         self.compile_parameter_list()
         self.tokenizer.advance()  # { ->
-        # breakpoint()
         while self.tokenizer.token == 'var':
             self.compile_var_dec()
         if sub_type == 'constructor':
@@ -93,9 +93,7 @@ class CompilationEngine:
         while self.tokenizer.token != '}':
             self.compile_statements()
         if sub_type == 'constructor':
-            self.vmwriter.write_push('pointer',
-                                     0)  # TODO this is for constructor not sure if for all
-            # ,most likely not what other functions push
+            self.vmwriter.write_push('pointer', 0)
         self.tokenizer.advance()
         # self.print_sym_table()
         self.sym_table.pop()
@@ -163,6 +161,7 @@ class CompilationEngine:
             count = self.compile_expression_list()
             self.tokenizer.advance()  # ) ->
             self.vmwriter.write_call(f'{fname}', count)
+        self.vmwriter.write_pop('temp', '0')
         self.tokenizer.advance()  # ; ->
 
     def compile_let(self):
@@ -180,22 +179,23 @@ class CompilationEngine:
         self.current_vm.pop()
 
     def compile_while(self):
+        self.recursion_index = 0
         self.tokenizer.advance()  # while ->
         self.vmwriter.write_lable(self.vmwriter.label_index)
         self.vmwriter.label_index += 1
         self.tokenizer.advance()  # ( ->
         self.compile_expression()
         self.tokenizer.advance()  # ) ->
-        self.vmwriter.write_arithmetic('~')
         self.vmwriter.write_if(self.vmwriter.label_index)
         self.vmwriter.label_index += 1
         self.tokenizer.advance()  # { ->
         self.compile_statements()
         self.tokenizer.advance()  # } ->
         self.vmwriter.label_index -= 2
-        self.vmwriter.write_goto(self.vmwriter.label_index)
+        self.vmwriter.write_goto(self.vmwriter.label_index - self.recursion_index)
         self.vmwriter.label_index += 1
-        self.vmwriter.write_lable(self.vmwriter.label_index)
+        self.vmwriter.write_lable(self.vmwriter.label_index - self.recursion_index)
+        self.recursion_index += 2
         self.vmwriter.label_index += 1
 
     def compile_return(self):
@@ -206,6 +206,7 @@ class CompilationEngine:
         self.tokenizer.advance()  # ; ->
 
     def compile_if(self):
+        self.recursion_index = 0
         self.tokenizer.advance()  # if ->
         self.tokenizer.advance()  # ( ->
         self.compile_expression()
@@ -217,8 +218,9 @@ class CompilationEngine:
         self.tokenizer.advance()  # } ->
         self.vmwriter.write_goto(self.vmwriter.label_index)
         self.vmwriter.label_index -= 1
-        self.vmwriter.write_lable(self.vmwriter.label_index)
+        self.vmwriter.write_lable(self.vmwriter.label_index - self.recursion_index)
         self.vmwriter.label_index += 1
+        self.recursion_index += 2
         if self.tokenizer.token == 'else':
             self.tokenizer.advance()  # else ->
             self.tokenizer.advance()  # { ->
@@ -233,7 +235,6 @@ class CompilationEngine:
             self.current_vm.append(self.tokenizer.token)
             self.tokenizer.advance()  # symbol ->
             self.compile_term()
-            # breakpoint()
             self.vmwriter.write_arithmetic(self.current_vm[-1])
             self.current_vm.pop()
         if self.array_count == 2:
@@ -248,15 +249,16 @@ class CompilationEngine:
         self.array_count = 0
 
     def compile_term(self):
-        if self.tokenizer.token == '(':  # expression(most likely function, don't know what else could it be) ()
+        if self.tokenizer.token == '(':  # expression ()
             self.tokenizer.advance()  # ( ->
             self.compile_expression()
             self.tokenizer.advance()  # ) ->
         elif self.tokenizer.token in ['~', '-']:  # uniry op
             self.current_vm.append(self.tokenizer.token)
+            tmp = 'neg' if self.tokenizer.token == '-' else self.tokenizer.token
             self.tokenizer.advance()  # ~ or - ->
             self.compile_term()
-            self.vmwriter.write_arithmetic(self.current_vm[-1])
+            self.vmwriter.write_arithmetic(tmp)
             self.current_vm.pop()
         elif self.tokenizer.token_type() != 'symbol':
             self.current_vm.append(self.tokenizer.token)
@@ -289,7 +291,7 @@ class CompilationEngine:
                 for index, item in enumerate(self.current_vm[-1]):
                     self.vmwriter.write_push('constant', ord(item))
                     self.vmwriter.write_call('String.appendChar', 1)
-                #  String constants are created using the OS constructor String.new(length)
+                # TODO  String constants are created using the OS constructor String.new(length)
                 #  String assignments like x="cc...c" are handled using a series of calls to the
                 #  OS routine String.appendChar(nextChar).
             elif self.tokenizer.token_type(self.current_vm[-1]) == 'integerConstant':
@@ -300,7 +302,7 @@ class CompilationEngine:
                 self.current_vm.pop()
             elif self.current_vm[-1] == 'true':
                 self.vmwriter.write_push('constant', '1')
-                self.vmwriter.write_arithmetic('-')
+                self.vmwriter.write_arithmetic('neg')
                 self.current_vm.pop()
             elif self.current_vm[-1] == 'false' or self.current_vm[-1] == 'null':
                 self.vmwriter.write_push('constant', '0')
@@ -333,7 +335,7 @@ if __name__ == '__main__':
             if name[-4:] == 'jack':
                 tokenizer_main = Tokenizer()
                 tokenizer_main.clear_file(path + '/' + name)
-                print(name)
+                print(name+'\n\n')
                 full_path = path + '/' + name[:-4] + 'vm'
                 comp_eng_main = CompilationEngine(tokenizer_main, full_path)
                 comp_eng_main.compile_class()
