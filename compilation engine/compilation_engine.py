@@ -8,15 +8,12 @@ from symbol_table import SymbolTable
 
 class CompilationEngine:
     def __init__(self, tokenizer, full_path_vm):
-        self.string = ''
-        self.array_count = self.tab = 0
+        self.string = self.sub_type = self.class_name = self.function_type = ''
+        self.array_count = self.tab = self.recursion_index = 0
         self.tokenizer = tokenizer
         self.sym_table = []
-        self.class_name = ''
         self.vmwriter = VMWriter(full_path_vm)
         self.current_vm = []  # used to reverse some of the commands, eg a+b need to be a b +
-        self.function_type = ''
-        self.recursion_index = 0
 
     def search_sym(self, current_vm):
         if self.sym_table[-1].kind_of(current_vm) is not None:
@@ -69,9 +66,7 @@ class CompilationEngine:
 
     def compile_subroutine(self):
         self.sym_table.append(SymbolTable())
-        sub_type = self.tokenizer.token
-        if sub_type == 'method':
-            self.sym_table[-1].start_subroutine('this', self.class_name)
+        self.sub_type = self.tokenizer.token
         self.tokenizer.advance()  # subroutine type(function|method|constructor) ->
         self.function_type = self.tokenizer.token
         self.tokenizer.advance()  # subroutine kind(int|void|etc..) ->
@@ -80,23 +75,22 @@ class CompilationEngine:
         self.tokenizer.advance()  # ( ->
         self.compile_parameter_list()
         self.tokenizer.advance()  # { ->
-        while self.tokenizer.token == 'var':
+        while self.tokenizer.token == 'var':  # create only symbol teable entries
             self.compile_var_dec()
-        if sub_type == 'constructor':
+        if self.sub_type == 'constructor':
             self.vmwriter.write_function(f'{self.class_name}.{sub_name}', self.sym_table[-1].var_count('var'))
-            self.vmwriter.write_push('constant', str(self.sym_table[-1].var_count('var')))
-            self.vmwriter.write_call('Memory.alloc', 1)
+            self.vmwriter.write_push('constant', self.sym_table[-2].var_count('field'))
+            self.vmwriter.write_call('Memory.alloc', self.sym_table[-2].var_count('field'))
             self.vmwriter.write_pop('pointer', 0)
-        elif sub_type == 'method':
-            self.vmwriter.write_function(f'{self.class_name}.{sub_name}', self.sym_table[-1].var_count('var') + 1)
+        elif self.sub_type == 'method':
+            self.sym_table[-1].start_subroutine('this', self.class_name)
+            self.vmwriter.write_function(f'{self.class_name}.{sub_name}', self.sym_table[-1].var_count('var'))
             self.vmwriter.write_push('argument', 0)
-            self.vmwriter.write_push('pointer', 0)
+            self.vmwriter.write_pop('pointer', 0)
         else:
             self.vmwriter.write_function(f'{self.class_name}.{sub_name}', self.sym_table[-1].var_count('var'))
         while self.tokenizer.token != '}':
             self.compile_statements()
-        if sub_type == 'constructor':
-            self.vmwriter.write_push('pointer', 0)
         self.tokenizer.advance()
         # self.print_sym_table()
         self.sym_table.pop()
@@ -143,30 +137,37 @@ class CompilationEngine:
             elif self.tokenizer.token == 'do':
                 self.compile_do()
             elif self.tokenizer.token == 'return':
+                if self.sub_type == 'constructor':
+                    self.vmwriter.write_push('pointer', 0)
                 self.compile_return()
             else:
                 break
 
     def compile_do(self):
         self.tokenizer.advance()  # do ->
-        fname = self.tokenizer.token
+        class_name = self.tokenizer.token
         self.tokenizer.advance()  # name ->
         if self.tokenizer.token == '(':
             self.tokenizer.advance()  # ( ->
             count = self.compile_expression_list()
             self.tokenizer.advance()  # ) ->
-            self.vmwriter.write_call(f'{self.class_name}.{fname}', count)
+            self.vmwriter.write_call(f'{self.class_name}.{class_name}', count)
         elif self.tokenizer.token == '.':
             self.tokenizer.advance()  # . ->
-            fname = f'{fname}.{self.tokenizer.token}'
+            fname = f'{class_name}.{self.tokenizer.token}'
             self.tokenizer.advance()  # name ->
             self.tokenizer.advance()  # ( ->
             count = self.compile_expression_list()
             self.tokenizer.advance()  # ) ->
-            self.vmwriter.write_call(f'{fname}', count)
+            if self.search_sym(class_name) is not None:
+                self.vmwriter.write_push(*self.search_sym(class_name))
+                self.vmwriter.write_call(f'{fname}', count + 1)
+            else:
+                self.vmwriter.write_call(f'{fname}', count)
         self.vmwriter.write_pop('temp', '0')
         self.tokenizer.advance()  # ; ->
 
+    # TODO constructors, fields and statics
     def compile_let(self):
         self.tokenizer.advance()  # let ->
         self.current_vm.append(self.tokenizer.token)
@@ -327,13 +328,13 @@ class CompilationEngine:
 
 
 if __name__ == '__main__':
-    path = 'C:/Users/AGrudev/Desktop/nand2tetris/projects/11/test'
+    path = 'C:/Users/SQA-AGrudev/Desktop/nand2tetris/projects/11/test'
     for root, dirs, files in os.walk(path, topdown=False):
         for name in files:
             if name[-4:] == 'jack':
                 tokenizer_main = Tokenizer()
                 tokenizer_main.clear_file(path + '/' + name)
-                print(name + '\n\n')
+                print(f'--------------------\n{name}\n--------------------')
                 full_path = path + '/' + name[:-4] + 'vm'
                 comp_eng_main = CompilationEngine(tokenizer_main, full_path)
                 comp_eng_main.compile_class()
