@@ -15,7 +15,7 @@ class CompilationEngine:
         self.vmwriter = VMWriter(full_path_vm)
         self.current_vm = []  # used to reverse some of the commands, eg a+b need to be a b +
 
-    def search_sym(self, current_vm):
+    def search_kind_of_sym(self, current_vm):
         if self.sym_table[-1].kind_of(current_vm) is not None:
             return self.sym_table[-1].kind_of(current_vm), self.sym_table[-1].index_of(current_vm)
         for i in range(len(self.sym_table) - 2, -1,
@@ -23,6 +23,11 @@ class CompilationEngine:
             # until it is bigger than -1, walking it backwards
             if self.sym_table[i].kind_of(current_vm) in ('static', 'this'):
                 return self.sym_table[i].kind_of(current_vm), self.sym_table[i].index_of(current_vm)
+
+    def search_type_of_sym(self, current_vm):
+        for i in range(len(self.sym_table) - 1, -1, -1):
+            if self.sym_table[i].type_of(current_vm) is not None:
+                return self.sym_table[i].type_of(current_vm)
 
     def write_token(self):
         if self.tokenizer.token_type() == 'stringConstant':
@@ -73,6 +78,8 @@ class CompilationEngine:
         sub_name = self.tokenizer.token
         self.tokenizer.advance()  # subroutine name ->
         self.tokenizer.advance()  # ( ->
+        if self.sub_type == 'method':
+            self.sym_table[-1].start_subroutine('this', self.class_name)
         self.compile_parameter_list()
         self.tokenizer.advance()  # { ->
         while self.tokenizer.token == 'var':  # create only symbol teable entries
@@ -80,10 +87,9 @@ class CompilationEngine:
         if self.sub_type == 'constructor':
             self.vmwriter.write_function(f'{self.class_name}.{sub_name}', self.sym_table[-1].var_count('var'))
             self.vmwriter.write_push('constant', self.sym_table[-2].var_count('field'))
-            self.vmwriter.write_call('Memory.alloc', self.sym_table[-2].var_count('field'))
+            self.vmwriter.write_call('Memory.alloc', 1)
             self.vmwriter.write_pop('pointer', 0)
         elif self.sub_type == 'method':
-            self.sym_table[-1].start_subroutine('this', self.class_name)
             self.vmwriter.write_function(f'{self.class_name}.{sub_name}', self.sym_table[-1].var_count('var'))
             self.vmwriter.write_push('argument', 0)
             self.vmwriter.write_pop('pointer', 0)
@@ -92,7 +98,6 @@ class CompilationEngine:
         while self.tokenizer.token != '}':
             self.compile_statements()
         self.tokenizer.advance()
-        # self.print_sym_table()
         self.sym_table.pop()
 
     def compile_parameter_list(self):
@@ -147,39 +152,49 @@ class CompilationEngine:
         self.tokenizer.advance()  # do ->
         class_name = self.tokenizer.token
         self.tokenizer.advance()  # name ->
-        if self.tokenizer.token == '(':
+        if self.tokenizer.token == '(':  # method
+            self.vmwriter.write_push('pointer', 0)
             self.tokenizer.advance()  # ( ->
             count = self.compile_expression_list()
             self.tokenizer.advance()  # ) ->
-            self.vmwriter.write_call(f'{self.class_name}.{class_name}', count)
-        elif self.tokenizer.token == '.':
+            self.vmwriter.write_call(f'{self.class_name}.{class_name}', count + 1)
+        elif self.tokenizer.token == '.':  # method or function
             self.tokenizer.advance()  # . ->
             fname = f'{class_name}.{self.tokenizer.token}'
+            sname = f'{self.search_type_of_sym(class_name)}.{self.tokenizer.token}'
             self.tokenizer.advance()  # name ->
+            if self.search_kind_of_sym(class_name) is not None:
+                self.vmwriter.write_push(*self.search_kind_of_sym(class_name))
             self.tokenizer.advance()  # ( ->
             count = self.compile_expression_list()
             self.tokenizer.advance()  # ) ->
-            if self.search_sym(class_name) is not None:
-                self.vmwriter.write_push(*self.search_sym(class_name))
-                self.vmwriter.write_call(f'{fname}', count + 1)
+            if self.search_kind_of_sym(class_name) is not None:
+                self.vmwriter.write_call(f'{sname}', count + 1)
             else:
                 self.vmwriter.write_call(f'{fname}', count)
         self.vmwriter.write_pop('temp', '0')
         self.tokenizer.advance()  # ; ->
 
-    # TODO constructors, fields and statics
     def compile_let(self):
+        flag_array = 0
         self.tokenizer.advance()  # let ->
         self.current_vm.append(self.tokenizer.token)
         self.tokenizer.advance()  # var_name ->
         if self.tokenizer.token == '[':
+            self.vmwriter.write_push(*self.search_kind_of_sym(self.current_vm[-1]))
             self.tokenizer.advance()  # [ ->
             self.compile_expression()
             self.tokenizer.advance()  # ] ->
+            self.vmwriter.write_arithmetic('+')
+            # self.vmwriter.write_pop('pointer', 1)
+            flag_array = 1
         self.tokenizer.advance()  # = ->
         self.compile_expression()
         self.tokenizer.advance()  # ; ->
-        self.vmwriter.write_pop(*self.search_sym(self.current_vm[-1]))
+        if flag_array == 0:
+            self.vmwriter.write_pop(*self.search_kind_of_sym(self.current_vm[-1]))
+        else:
+            self.vmwriter.write_pop('that', 0)
         self.current_vm.pop()
 
     def compile_while(self):
@@ -192,12 +207,12 @@ class CompilationEngine:
         self.tokenizer.advance()  # ) ->
         label2 = self.vmwriter.label_index
         self.vmwriter.write_if(self.vmwriter.label_index)
+        self.vmwriter.label_index += 1
         self.tokenizer.advance()  # { ->
         self.compile_statements()
         self.tokenizer.advance()  # } ->
         self.vmwriter.write_goto(label1)
         self.vmwriter.write_lable(label2)
-        self.vmwriter.label_index += 1
 
     def compile_return(self):
         self.tokenizer.advance()  # retrun ->
@@ -219,6 +234,7 @@ class CompilationEngine:
         self.tokenizer.advance()  # } ->
         label2 = self.vmwriter.label_index
         self.vmwriter.write_goto(self.vmwriter.label_index)
+        self.vmwriter.label_index += 1
         self.vmwriter.write_lable(label1)
         if self.tokenizer.token == 'else':
             self.tokenizer.advance()  # else ->
@@ -226,7 +242,6 @@ class CompilationEngine:
             self.compile_statements()
             self.tokenizer.advance()  # } ->
         self.vmwriter.write_lable(label2)
-        self.vmwriter.label_index += 1
 
     def compile_expression(self):
         self.compile_term()
@@ -236,15 +251,9 @@ class CompilationEngine:
             self.compile_term()
             self.vmwriter.write_arithmetic(self.current_vm[-1])
             self.current_vm.pop()
-        if self.array_count == 2:
+        if self.array_count > 0:
             self.vmwriter.write_pop('pointer', 1)
             self.vmwriter.write_push('that', 0)
-            self.vmwriter.write_pop('temp', 0)
-            self.vmwriter.write_pop('pointer', 1)
-            self.vmwriter.write_push('temp', 0)
-            self.vmwriter.write_pop('that', 0)
-        elif self.array_count == 1:
-            self.vmwriter.write_pop('that', 0)
         self.array_count = 0
 
     def compile_term(self):
@@ -264,11 +273,12 @@ class CompilationEngine:
             self.tokenizer.advance()  # integer,string,keyword,varnname,subroutine_name,class_name,var_name ->
             if self.tokenizer.token == '[':  # Array
                 self.tokenizer.advance()  # [ ->
-                self.vmwriter.write_push(*self.search_sym(self.current_vm[-1]))
+                self.vmwriter.write_push(*self.search_kind_of_sym(self.current_vm[-1]))
+                self.current_vm.pop()
                 self.compile_expression()
-                self.vmwriter.write_push(*self.search_sym(self.current_vm[-1]))
                 self.vmwriter.write_arithmetic('+')
-                self.vmwriter.write_push('pointer', 1)
+                # self.vmwriter.write_pop('pointer', 1)
+                # self.vmwriter.write_push('that', 0)
                 self.tokenizer.advance()  # ] ->
                 self.array_count += 1
             elif self.tokenizer.token == '(':  # subroutine_name ()
@@ -278,26 +288,34 @@ class CompilationEngine:
                 self.vmwriter.write_call(f'{self.class_name}.{self.current_vm[-1]}', count)
                 self.current_vm.pop()
             elif self.tokenizer.token == '.':  # method
+                if self.search_type_of_sym(self.current_vm[-1]) is not None:
+                    flag = 1
+                    self.vmwriter.write_push(*self.search_kind_of_sym(self.current_vm[-1]))
+                else:
+                    flag = 0
                 self.tokenizer.advance()  # . ->
                 fname = self.tokenizer.token
                 self.tokenizer.advance()  # subroutine name ->
                 self.tokenizer.advance()  # ( ->
                 count = self.compile_expression_list()
                 self.tokenizer.advance()  # ) ->
-                self.vmwriter.write_call(f'{self.current_vm[-1]}.{fname}', count)
+                if flag == 1:
+                    self.vmwriter.write_call(f'{self.search_type_of_sym(self.current_vm[-1])}.{fname}', count + 1)
+                else:
+                    self.vmwriter.write_call(f'{self.current_vm[-1]}.{fname}', count)
                 self.current_vm.pop()
             elif self.tokenizer.token_type(self.current_vm[-1]) == 'stringConstant':
-                for index, item in enumerate(self.current_vm[-1]):
+                self.vmwriter.write_push('constant', len(self.current_vm[-1].strip('"')))
+                self.vmwriter.write_call('String.new', 1)
+                for index, item in enumerate(self.current_vm[-1].strip('"')):
                     self.vmwriter.write_push('constant', ord(item))
-                    self.vmwriter.write_call('String.appendChar', 1)
-                # TODO  String constants are created using the OS constructor String.new(length)
-                #  String assignments like x="cc...c" are handled using a series of calls to the
-                #  OS routine String.appendChar(nextChar).
+                    self.vmwriter.write_call('String.appendChar', 2)
+                self.current_vm.pop()
             elif self.tokenizer.token_type(self.current_vm[-1]) == 'integerConstant':
                 self.vmwriter.write_push('constant', self.current_vm[-1])
                 self.current_vm.pop()
             elif self.tokenizer.token_type(self.current_vm[-1]) == 'identifier':
-                self.vmwriter.write_push(*self.search_sym(self.current_vm[-1]))
+                self.vmwriter.write_push(*self.search_kind_of_sym(self.current_vm[-1]))
                 self.current_vm.pop()
             elif self.current_vm[-1] == 'true':
                 self.vmwriter.write_push('constant', '1')
