@@ -9,7 +9,7 @@ from symbol_table import SymbolTable
 class CompilationEngine:
     def __init__(self, tokenizer, full_path_vm):
         self.string = self.sub_type = self.class_name = self.function_type = ''
-        self.array_count = self.tab = self.recursion_index = 0
+        self.tab = self.recursion_index = 0
         self.tokenizer = tokenizer
         self.sym_table = []
         self.vmwriter = VMWriter(full_path_vm)
@@ -185,8 +185,6 @@ class CompilationEngine:
             self.tokenizer.advance()  # [ ->
             self.compile_expression()
             self.tokenizer.advance()  # ] ->
-            self.vmwriter.write_arithmetic('+')
-            # self.vmwriter.write_pop('pointer', 1)
             flag_array = 1
         self.tokenizer.advance()  # = ->
         self.compile_expression()
@@ -194,6 +192,10 @@ class CompilationEngine:
         if flag_array == 0:
             self.vmwriter.write_pop(*self.search_kind_of_sym(self.current_vm[-1]))
         else:
+            self.vmwriter.write_pop('temp', 1)
+            self.vmwriter.write_arithmetic('+')
+            self.vmwriter.write_pop('pointer', 1)
+            self.vmwriter.write_push('temp', 1)
             self.vmwriter.write_pop('that', 0)
         self.current_vm.pop()
 
@@ -251,10 +253,6 @@ class CompilationEngine:
             self.compile_term()
             self.vmwriter.write_arithmetic(self.current_vm[-1])
             self.current_vm.pop()
-        if self.array_count > 0:
-            self.vmwriter.write_pop('pointer', 1)
-            self.vmwriter.write_push('that', 0)
-        self.array_count = 0
 
     def compile_term(self):
         if self.tokenizer.token == '(':  # expression ()
@@ -270,17 +268,16 @@ class CompilationEngine:
             self.current_vm.pop()
         elif self.tokenizer.token_type() != 'symbol':
             self.current_vm.append(self.tokenizer.token)
-            self.tokenizer.advance()  # integer,string,keyword,varnname,subroutine_name,class_name,var_name ->
+            self.tokenizer.advance()  # integer, string, keyword, varnname, subroutine_name, class_name, var_name ->
             if self.tokenizer.token == '[':  # Array
                 self.tokenizer.advance()  # [ ->
                 self.vmwriter.write_push(*self.search_kind_of_sym(self.current_vm[-1]))
                 self.current_vm.pop()
                 self.compile_expression()
                 self.vmwriter.write_arithmetic('+')
-                # self.vmwriter.write_pop('pointer', 1)
-                # self.vmwriter.write_push('that', 0)
+                self.vmwriter.write_pop('pointer', 1)
+                self.vmwriter.write_push('that', 0)
                 self.tokenizer.advance()  # ] ->
-                self.array_count += 1
             elif self.tokenizer.token == '(':  # subroutine_name ()
                 self.tokenizer.advance()  # ( ->
                 count = self.compile_expression_list()
@@ -346,7 +343,7 @@ class CompilationEngine:
 
 
 if __name__ == '__main__':
-    path = 'C:/Users/SQA-AGrudev/Desktop/nand2tetris/projects/11/test'
+    path = 'C:/Users/AGrudev/Desktop/nand2tetris/projects/11/test'
     for root, dirs, files in os.walk(path, topdown=False):
         for name in files:
             if name[-4:] == 'jack':
