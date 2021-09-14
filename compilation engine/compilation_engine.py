@@ -142,8 +142,6 @@ class CompilationEngine:
             elif self.tokenizer.token == 'do':
                 self.compile_do()
             elif self.tokenizer.token == 'return':
-                if self.sub_type == 'constructor':
-                    self.vmwriter.write_push('pointer', 0)
                 self.compile_return()
             else:
                 break
@@ -217,7 +215,7 @@ class CompilationEngine:
         self.vmwriter.write_lable(label2)
 
     def compile_return(self):
-        self.tokenizer.advance()  # retrun ->
+        self.tokenizer.advance()  # return ->
         if self.tokenizer.token != ';':
             self.compile_expression()
         self.vmwriter.write_return(self.function_type)
@@ -320,6 +318,12 @@ class CompilationEngine:
                 self.current_vm.pop()
             elif self.current_vm[-1] == 'false' or self.current_vm[-1] == 'null':
                 self.vmwriter.write_push('constant', '0')
+                self.current_vm.pop()
+            elif self.current_vm[-1] == 'this':
+                self.vmwriter.write_push('pointer', '0')
+                self.current_vm.pop()
+            elif self.current_vm[-1] == 'that':
+                self.vmwriter.write_push('pointer', '1')
                 self.current_vm.pop()
 
     def compile_expression_list(self):
