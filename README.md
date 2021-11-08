@@ -1,4 +1,4 @@
-#H1 Contents for the courses nand2tetris part one and part two.
+# Contents for the courses nand2tetris part one and part two.
 Important things:
 1. Project 06 cotaints an assemler which takes Assembly and translates it into machine code
 2. Project 08 contains a VMtranslator which takes VM code and translates it into Assemly
