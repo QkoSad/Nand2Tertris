@@ -1,0 +1,44 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/03/a/PC.hdl
+
+/**
+ * A 16-bit counter with load and reset control bits.
+ * if      (reset[t] == 1) out[t+1] = 0
+ * else if (load[t] == 1)  out[t+1] = in[t]
+ * else if (inc[t] == 1)   out[t+1] = out[t] + 1  (integer addition)
+ * else                    out[t+1] = out[t]
+ */
+
+CHIP PC {
+    IN in[16],load,inc,reset;
+    OUT out[16];
+
+    PARTS:
+    DMux8Way(in=true,sel[0]=reset,sel[1]=load,sel[2]=inc,a=a,b=b,c=c,d=d,e=e,f=f,g=g,h=h);
+    
+    DFF(in=inc,out=inct);
+    And(a=inc,b=inct,out=out1);
+    Mux16(a=in,b=out4,sel=out1,out=out2);
+    Inc16(in=out2,out=out3);
+    Register(in=out3,load=load,out=out4,out=out);
+    
+    Not(in=a,out=notа);
+    Register(in=in,load=notа,out=outA);
+
+    And16(a[0..15]=false,b[0..15]=false,out=outB);
+    
+    Register(in=in,load=c,out=outC);
+    
+    And16(a[0..15]=false,b[0..15]=false,out=outD);
+    
+
+    And16(a[0..15]=false,b[0..15]=false,out=outF);
+    
+    Register(in=in,load=g,out=outG);
+    
+    And16(a[0..15]=false,b[0..15]=false,out=outH);
+    And16(a[0..15]=false,b[0..15]=false,out=outE);
+    Mux8Way16(a=outA,b=outB,c=outC,d=outD,e=outE,f=outF,g=outG,h=outH,sel[0]=reset,sel[1]=load,sel[2]=inc,out=out67);
+    }

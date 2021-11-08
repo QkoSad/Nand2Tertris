@@ -1,0 +1,473 @@
+class Piece {
+    static int lBorder, rBorder, uBorder, dBorder, st;
+    field int x1, y1, x2, y2, x3, y3, x4, y4, piece, direction;
+    field bool move;
+    static Array st;
+
+    constructor Piece new(int Ax1, int Ay1, int Ax2, int Ay2, int Ax3, int Ay3, int Ax4, int Ay4, int p) {
+        let x1 = Ax1;
+        let y1 = Ay1;
+        let x2 = Ax2;
+        let y2 = Ay2;
+        let x3 = Ax3;
+        let y3 = Ay3;
+        let x4 = Ax4;
+        let y4 = Ay4;
+        let piece = p;
+        let direction = 0;
+        let move = true;
+        return this;
+    }
+    
+    function void init(){
+        var int a;
+        let lBorder = 0;
+        let rBorder = 511;
+        let uBorder = 0;
+        let dBorder = 255;
+        let st = Array.new(16);
+        let st[0] = 1;
+        while (a < 15){
+            let a = a + 1;
+            let st[a] = st[a - 1] + st[a - 1];
+        }
+        return;
+    }
+
+    method void dispose() {
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    /** draws 2 rectangles also checks if there is a piece at the spawn which will indicate end of the game. */
+    method bool draw() { 
+        var bool finish;
+        let finish = true;
+        let finish = Piece.sample(x1,y1) & finish;
+        let finish = Piece.sample(x2,y2) & finish;
+        let finish = Piece.sample(x3,y3) & finish;
+        let finish = Piece.sample(x4,y4) & finish;
+        if (finish){
+            do Screen.setColor(true);
+            do Screen.drawRectangle(x1, y1, x2, y2);
+            do Screen.drawRectangle(x3, y3, x4, y4);
+            return true;
+        }
+        return false;
+    }
+
+    /** Erases the square from the screen. */
+    method void erase() {
+        do Screen.setColor(false);
+        do Screen.drawRectangle(x1, y2, x2, y2);
+        do Screen.drawRectangle(x3, y3, x4, y4);
+        return;
+    }
+    /** checks if those coodinates hold any value > 0. */
+    function bool sample(int x, int y){ 
+        var int value, address, bit, memBlock;
+        let memBlock = x / 16;
+        let address = (32 * y) + memBlock + 16384;
+        if (address > 24576){
+            return false;
+        }
+        let value = Memory.peek(address);
+        if (value = 0){
+            return true;
+            }
+        return false;
+    }
+    
+    method bool getMove(){
+        return move;
+    }
+    
+    /** Checks if the piece can move in the given direction(dir). */
+    method bool fullSample(int dir){
+        var int size1, size2, i, j;
+        var bool result, flagUpon;     
+        if (dir = 1){ //down
+            let size1 = x2 - x1;
+            let size2 = x4 - x3;
+            let result = true;
+            while (i < size1){ // for each block of the first rectangle
+                let j = 0;
+                let flagUpon = false;
+                while (j < size2){ // for each block of the second rectangle
+                    if ((x1 + i) = (x3 + j)){ // if this block of the first rectangle sits upon a block of the second rectangle
+                        let flagUpon = true;
+                    }
+                    let result = result & Piece.sample(x3 + j, y4 + 1); // if there is a block under the second rectangle
+                    let j = j + 16; // sets the coords for the next block of the second rectangle
+                }
+                if (~(flagUpon)){
+                    let result = result & Piece.sample(x1 + i, y2 + 1); // if there is a block under the first rectangle
+                }
+                let i = i + 16; // sets the coords for the next block of the firs rectangle
+            }    
+            return result;
+        }
+        else{
+            if (dir = 2){   //right
+                let size1 = y2 - y1;
+                let size2 = y4 - y3;
+                let result = true;
+                while (i < size1){
+                    let j = 0;
+                    let flagUpon = false;
+                    while (j < size2){
+                        if ((y1 + i) = (y3 + j)){
+                            let flagUpon = true;
+                        }
+                        let result = result & Piece.sample(x4 + 1, (y3 + j));
+                        let j = j + 16;  
+                    }
+                    if (~(flagUpon)){
+                        let result = result & Piece.sample(x2 + 1, (y1 + i));
+                    }
+                    let i = i +16;
+                }
+                return result;
+            }
+            else{ // left
+                let size1 = y2 - y1;
+                let size2 = y4 - y3;
+                let result = true;
+                while (i < size2){
+                    let j = 0;
+                    let flagUpon = false;
+                    while (j < size1){
+                        if ((y3 + i) = (y1 + j)){
+                            let flagUpon = true;
+                        }
+                        let result = result & Piece.sample(x1 - 1, (y1 + j));
+                        let j = j + 16;
+                    }
+                    if (~(flagUpon)){
+                        let result = result & Piece.sample(x3 - 1, (y3 + i));
+                    }
+                    let i = i + 16;
+                }
+                return result;
+            } 
+        }
+    }
+    
+    /** Moves the game piece 16 pixels down. */
+    method void moveDown() { 
+        var int i;
+        if ((y2 < dBorder) & (y4 < dBorder) & (move) & fullSample(1)) {
+            while (i < 16){
+                do Screen.setColor(false);
+                do Screen.drawRectangle(x1, y1, x2, y1);
+                do Screen.drawRectangle(x3, y3, x4, y3);
+                let y1 = y1 + 1;
+                let y2 = y2 + 1;
+                let y3 = y3 + 1;
+                let y4 = y4 + 1;
+                do Screen.setColor(true);
+                do Screen.drawRectangle(x1, y2, x2, y2);
+                do Screen.drawRectangle(x3, y4, x4, y4);
+                let i = i + 1;
+                do Sys.wait(10);
+            }
+        }
+        else{
+            let move = false;
+            }
+        return;
+    }
+    
+    /** Moves the game piece 16 pixels to the left. */
+    method void moveLeft() {
+        var int i;
+        if ((x1 + 15 > lBorder) & (move) & (x3 + 15 > lBorder)& fullSample(0)){
+            while (i < 16){
+                do Screen.setColor(false);
+                do Screen.drawRectangle(x2, y1, x2, y2);
+                do Screen.drawRectangle(x4, y3, x4, y4);
+                let x1 = x1 - 1;
+                let x2 = x2 - 1;
+                let x3 = x3 - 1;
+                let x4 = x4 - 1;
+                do Screen.setColor(true);
+                do Screen.drawRectangle(x1, y1, x2, y2);
+                do Screen.drawRectangle(x3, y3, x4, y4);
+                let i = i + 1;
+                do Sys.wait(10);
+                }
+        }    
+        return;
+    }
+    
+    /** Moves the game piece 16 pixels to the right. */
+    method void moveRight() {
+        var int i;
+        if ((x4 < rBorder) & (move) & (x2 < rBorder) & fullSample(2)){
+            while (i < 16){
+                do Screen.setColor(false);
+                do Screen.drawRectangle(x1, y1, x1, y2);
+                do Screen.drawRectangle(x3, y3, x3, y4);
+                let x1 = x1 + 1;
+                let x2 = x2 + 1;
+                let x3 = x3 + 1;
+                let x4 = x4 + 1;
+                do Screen.setColor(true);
+                do Screen.drawRectangle(x1, y1, x2, y2);
+                do Screen.drawRectangle(x3, y3, x4, y4);
+                let i = i + 1;
+                do Sys.wait(10);    
+                } 
+        }
+        return;
+    }
+    
+    /** Deletes the piece and draws it at the new coodinates. */
+    method void reDraw(int Ax1, int Ay1, int Ax2, int Ay2, int Ax3, int Ay3, int Ax4, int Ay4){
+        var int absTmp;
+        if((Ax1 < 175) | (Ax3 < 175) | (Ax2 > 336) | (Ax4 > 336)){
+            return;
+        }
+        if((Ay2 > 255) | (Ay4 > 255) | (Ay1 < 0) | (Ay3 < 0)){
+            return;
+        }
+        if((Ax1 > Ax2) | (Ax3 > Ax4) | (Ay1 > Ay2) | (Ay3 > Ay4)){
+            return;
+        }
+        do Screen.setColor(false);
+        do Screen.drawRectangle(x1, y1, x2, y2);
+        do Screen.drawRectangle(x3, y3, x4, y4);
+        do Screen.setColor(true);
+        let x1 = Ax1;
+        let y1 = Ay1;
+        let x2 = Ax2;
+        let y2 = Ay2;
+        let x3 = Ax3;
+        let y3 = Ay3;
+        let x4 = Ax4;
+        let y4 = Ay4; 
+        do Screen.drawRectangle(x1, y1, x2, y2);
+        do Screen.drawRectangle(x3, y3, x4, y4);
+        return;
+    }
+    
+    /** Rotates the piece clockwise. */
+    method void rotate(){
+        var bool samp;
+        let samp = true;
+        if (direction = 0){ // starting position
+            if (piece = 0){ // arrow
+                let samp = Piece.sample(x4, y1) & samp; // checks if the place at which the new piece will be drawn are free
+                let samp = Piece.sample(x4, y1 - 1) & samp;
+                if (samp){
+                    do reDraw(x1, y1, x2, y2, x4 - 15, y4 - 47, x4, y4); // redraws it at the new location
+                    let direction = 1;
+                }
+            }
+            if (piece = 1){ 
+                let samp = Piece.sample(x1 + 16, y1) & samp;
+                let samp = Piece.sample(x1 + 16, y1 - 16) & samp;
+                let samp = Piece.sample(x4, y1 - 16) & samp;
+                if(samp){
+                    do reDraw(x1 + 16, y1 - 16, x4 - 16, y4, x4 - 15, y1 - 16, x4, y1 - 1);
+                    let direction = 1;
+                    }
+                }
+            if (piece = 2){
+                let samp = Piece.sample(x1 - 16, y1 - 16) & samp;
+                let samp = Piece.sample(x1 - 16, y1) & samp;
+                if (samp){
+                    do reDraw(x1 - 16, y1 - 16, x2 - 16, y2 + 16, x3 + 32, y3, x4, y4);
+                    let direction = 1;
+                }
+            }
+            if (piece = 3){
+                let samp = Piece.sample(x3 + 16, y3 - 32) & samp;
+                let samp = Piece.sample(x4, y4 - 16) & samp;
+                if (samp){
+                    do reDraw(x1 + 16, y1, x2, y2 + 16, x3 + 16, y3 - 32, x4, y4 - 16);
+                    let direction = 1;
+                }
+            }
+            if (piece = 4){
+                let samp = Piece.sample(x3 + 32, y3 - 32) & samp;
+                if (samp){
+                    do reDraw(x1, y1, x2 - 16, y2 + 16, x3 + 32, y3 - 32, x4 + 16, y4 - 16);
+                    let direction = 1;
+                }
+            }
+            if (piece = 5){
+                let samp = Piece.sample(x1 + 32, y1 - 32) & samp;
+                let samp = Piece.sample(x2 + 16, y2 - 16) & samp;
+                let samp = Piece.sample(x4 - 16, y4 + 16) & samp;
+                if (samp){
+                    do reDraw(x1 + 32, y1 - 32, x2 + 16, y2 - 16, x3, y3, x4 - 16, y4 + 16);
+                    let direction = 1;
+                }
+            }    
+        }
+        else{
+            if (direction = 1){
+                if (piece = 0){
+                    let samp = Piece.sample(x1, y3) & samp;
+                    let samp = Piece.sample(x1 - 1, y3) & samp;
+                    if (samp){
+                        do reDraw(x1 - 16, y3, x4, y3 + 15, x1, y1, x2, y2);
+                        let direction = 2;
+                    }
+                }
+                if (piece = 1){
+                    let samp = Piece.sample(x1 - 16, y1 + 16) & samp;
+                    let samp = Piece.sample(x3, y3 + 16) & samp;
+                    let samp = Piece.sample(x3, y3 + 32) & samp;
+                    if (samp){
+                        do reDraw(x1 - 16, y1 + 16, x4, y4 + 16, x3, y3 + 32, x4, y2);
+                        let direction = 2;
+                    }
+                }
+                if (piece = 2){
+                    let samp = Piece.sample(x1 - 16, y1 + 16) & samp;
+                    let samp = Piece.sample(x2 + 16, y2 - 16) & samp;
+                    let samp = Piece.sample(x3 - 32, y3) & samp;
+                    if (samp){
+                        do reDraw(x1 - 16, y1 + 16, x2 + 16, y2 - 16, x3 - 32, y3, x4 - 32, y4);
+                        let direction = 2;
+                    }
+                }
+                if (piece = 3){
+                    let samp = Piece.sample(x1 - 16, y1) & samp;
+                    let samp = Piece.sample(x4, y4 + 16) & samp;
+                    if (samp){
+                        do reDraw(x1 - 16, y1, x2, y2 - 16, x3 - 16, y3 +32, x4, y4 + 16);
+                        let direction = 2;
+                    }
+                }
+                if (piece = 4){
+                    let samp = Piece.sample(x3 - 32, y3 + 32) & samp;
+                    if (samp){
+                        do reDraw(x1, y1, x2 + 16, y2 - 16, x3 - 32, y3 + 32, x4 - 16, y4 + 16);
+                        let direction = 2;
+                    }
+                }
+                if (piece = 5){
+                    let samp = Piece.sample(x1 - 16, y1 + 16) & samp;
+                    let samp = Piece.sample(x3 + 16, y3 - 16) & samp;
+                    let samp = Piece.sample(x4 + 32, y4 - 32) & samp;
+                    if (samp){
+                        do reDraw(x1 - 32, y1 + 16, x2 - 16, y2, x3, y3 - 16, x4 + 16, y4 - 32);
+                        let direction = 2;
+                    }
+                } 
+            }    
+            else{
+                if (direction = 2){
+                    if (piece = 0){
+                        let samp = Piece.sample(x1, y1+16) & samp;
+                        let samp = Piece.sample(x1, y1+32) & samp;
+                        if (samp){
+                            do reDraw(x1, y1, x1 + 15, y1 + 47, x3, y3, x4, y4);
+                            let direction = 3;
+                        }
+                    }
+                    if (piece = 1){
+                        let samp = Piece.sample(x1 - 16, y1 + 16) & samp;
+                        let samp = Piece.sample(x3, y3 + 16) & samp;
+                        let samp = Piece.sample(x3, y3 + 32) & samp;
+                        if (samp){
+                            do reDraw(x1, y1 + 16, x1 + 15, y1 + 31, x1 + 16, y1 - 16, x4 - 16, y4);
+                            let direction = 3;    
+                        }
+                    }
+                    if (piece = 2){
+                        let samp = Piece.sample(x1, y1 - 16) & samp;
+                        let samp = Piece.sample(x2 + 32, y2 + 16) & samp;
+                        let samp = Piece.sample(x4 + 16, y4) & samp;
+                        if (samp){
+                            do reDraw(x1, y1 - 16, x2 - 32, y2 - 16, x3 + 16, y3 - 32, x4 + 16, y4);
+                            let direction = 3;
+                        }
+                    }
+                    if (piece = 3){
+                        let samp = Piece.sample(x2 - 16, y2 + 16) & samp;
+                        let samp = Piece.sample(x3, y3 - 32) & samp;
+                        if (samp){
+                            do reDraw(x1, y1, x2 - 16, y2 + 16, x3, y3 - 32, x4 - 16, y4 - 16);
+                            let direction = 3;
+                        }
+                    }
+                    if (piece = 4){
+                        let samp = Piece.sample(x1 - 16, y1 - 16) & samp;
+                        let samp = Piece.sample(x2 - 32, y2) & samp;
+                        if (samp){
+                            do reDraw(x1 - 16, y1 - 16, x2 - 32, y2, x3 + 16, y3 - 16, x4, y4);
+                            let direction = 3;
+                        }    
+                    }
+                    if (piece = 5){
+                        let samp = Piece.sample(x1 + 16, y1 - 16) & samp;
+                        let samp = Piece.sample(x3 - 16, y3 - 16) & samp;
+                        let samp = Piece.sample(x4 - 32, y4 + 32) & samp;
+                        if (samp){
+                            do reDraw(x1 + 16, y1 - 16, x2, y2, x3 - 16, y3 + 16, x4 - 32, y4 + 32);
+                            let direction = 3;
+                        }
+                    } 
+                }
+                else{
+                    if (piece = 0){
+                        let samp = Piece.sample(x4 + 16, y4) & samp;
+                        let samp = Piece.sample(x4 + 32, y4) & samp;
+                        if (samp){
+                            do reDraw(x3, y3, x4, y4, x1, y1 + 32, x1 + 47, y1 + 47);
+                            let direction = 0;
+                        }
+                    }
+                    if (piece = 1){
+                        let samp = Piece.sample(x1, y1 - 16) & samp;
+                        let samp = Piece.sample(x4 + 16, y4) & samp;
+                        if (samp){
+                            do reDraw(x1, y1 - 16, x2, y2 -16, x1, y1, x4 + 16, y4);
+                            let direction = 0;    
+                        }
+                    }
+                    if (piece = 2){
+                        let samp = Piece.sample(x1 + 32, y1 + 16) & samp;
+                        let samp = Piece.sample(x3 - 16, y3 + 32) & samp;
+                        let samp = Piece.sample(x4 + 16, y4) & samp;
+                        if (samp){
+                            do reDraw(x1 + 32, y1 + 16, x2 + 32, y2 + 16, x3 - 16, y3 + 32, x4 + 16, y4);
+                            let direction = 0;    
+                        }
+                    }
+                    if (piece = 3){
+                        let samp = Piece.sample(x3, y3 + 32) & samp;
+                        let samp = Piece.sample(x4 + 16, y4 + 16) & samp;
+                        if (samp){
+                            do reDraw(x1, y1, x2 + 16, y2 - 16, x3, y3 + 32, x4 + 16, y4 + 16);
+                            let direction = 0;
+                        }
+                    }
+                    if (piece = 4){
+                        let samp = Piece.sample(x3 - 16, y3 + 16) & samp;
+                        let samp = Piece.sample(x2 + 32, y2) & samp;
+                        if (samp){
+                            do reDraw(x1 + 16, y1 + 16, x2 + 32, y2, x3 - 16, y3 + 16, x4, y4);
+                            let direction = 0;
+                        }    
+                    }
+                    if (piece = 5){
+                        let samp = Piece.sample(x1 - 16, y1 + 32) & samp;
+                        let samp = Piece.sample(x3 + 16, y3) & samp;
+                        let samp = Piece.sample(x4 + 32, y4 - 16) & samp;
+                        if (samp){
+                            do reDraw(x1 - 16, y1 + 32, x2, y2 + 16, x3 + 16, y3, x4 + 32, y4 - 16);
+                            let direction = 0;
+                        }
+                    } 
+                }
+            }   
+        }
+        return;
+    }
+}
+  

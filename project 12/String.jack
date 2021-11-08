@@ -1,0 +1,154 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/12/String.jack
+
+/**
+ * Represents character strings. In addition for constructing and disposing
+ * strings, the class features methods for getting and setting individual
+ * characters of the string, for erasing the string's last character,
+ * for appending a character to the string's end, and more typical
+ * string-oriented operations.
+ */
+class String { 
+    field Array str;
+    field int length;
+    field int strLength;
+
+    /** constructs a new empty string with a mavalimum length of mavalLength
+     *  and initial length of 0. */
+    constructor String new(int mavalLength) {
+        if (mavalLength > 0){
+            let str = Array.new(mavalLength);
+        }
+        let strLength = mavalLength;
+        let length = 0;
+        return this;
+    }
+
+    /** Disposes this string. */
+    method void dispose() {
+        if(length > 0){
+            do str.dispose();
+        }
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    /** Returns the current length of this string. */
+    method int length() {
+        return length;
+    }
+
+    /** Returns the character at the j-th location of this string. */
+    method char charAt(int j) {
+        if(j > length){
+            do Sys.error(7);
+        }
+        return str[j];          
+    }
+
+    /** Sets the character at the j-th location of this string to c. */
+    method void setCharAt(int j, char c) {
+        if(j > length){
+            do Sys.error(7);
+        }
+        let str[j] = c;
+        return;
+    }
+
+    /** Appends c to this string's end and returns this string. */
+    method String appendChar(char c) {
+        if(strLength = length){
+            do Sys.error(7);
+        }
+        let str[length] = c;
+        let length = length + 1;
+        return this;
+    }
+
+    /** Erases the last character from this string. */
+    method void eraseLastChar() {
+        if (length = 0){
+            do Sys.error(7);
+        }
+        let str[length] = 0;
+        let length = length - 1;
+        return;
+    }
+
+    /** Returns the integer value of this string, 
+     *  until a non-digit character is detected. */
+    method int intValue() {
+        var int d, sum, i;
+        var bool f;
+        while(i < length){
+            let d = str[i];
+            if ((d > 47) & (d < 58)){
+                let sum = (sum * 10) + (d - 48);
+            }
+            else{
+                if((i = 0) & (d = 45)){
+                    let f = true;
+                }
+                else{
+                    let i = length;
+                }
+            }
+            let i = i + 1;
+        }
+        if (f){
+            return -sum;
+        }
+        return sum;
+    }
+
+    /** Sets this string to hold a representation of the given value. */
+    method void setInt(int val) {
+        var Array c;
+        var int d, b, a;
+        let c = Array.new(6);
+        if (val < 0){
+            let d = ~0;
+            let val = -val;
+        }
+        let b = val;
+        while(b > 0){
+            let b = val / 10;
+            let c[a] = 48 + val - (b * 10);
+            let a = a + 1;
+            let val = b;
+        }
+        if (d){
+            let c[a] = 45;
+            let a = a + 1;
+        }
+        if (a = 0){
+            let str[0] = 48;
+            let length = 1;
+        }
+        else{
+            let length = 0;
+            while (length < a){
+                let str[length] = c[a - 1 - length];
+                let length = length + 1;
+            }
+        }
+        do Array.dispose(c);
+        return;
+    }
+    /** Returns the new line character. */
+    function char newLine() {
+        return 128;
+    }
+
+    /** Returns the backspace character. */
+    function char backSpace() {
+        return 129;
+    }
+
+    /** Returns the double quote (") character. */
+    function char doubleQuote() {
+        return 34;
+    }
+}

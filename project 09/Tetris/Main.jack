@@ -1,0 +1,19 @@
+class Main {
+    function void main (){
+        var int s;
+        let s = -1;
+        do Output.moveCursor(0,20);
+        do Output.printString("Welcome to Tetris");
+        do Sys.wait(2000);
+        do Output.println();
+        do Output.println();
+        do Output.println();
+        while ((s < 0) | (s > 100)){ // gets a number used for seed for the random function
+            let s = Keyboard.readInt("Enter a number between 0 and 100:");
+            do Screen.clearScreen();
+        }
+        do Sys.wait(2000);
+        do Tetris.tetris(s);
+        return;
+    }
+}

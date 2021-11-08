@@ -1,0 +1,203 @@
+class Tetris {
+    static int points, seed, next_seed;
+    
+    function void tetris(int z){
+        var Piece p, nextPiece;
+        var int i, x1, y1, x2, y2, x3, y3, x4, y4, key, j, randTmp, piece_number, moves;
+        var Array left_g, right_g, box, stick, left_z, right_z,dick, all_piece, tmp;
+        do Piece.init();
+        do Tetris.border();
+        let points = 0;       
+        let all_piece = Array.new(25);
+        let all_piece[0] = Tetris.newPiece(16,0,31,15, 0,16,47,31,  0);  // arrow
+        let all_piece[1] = Tetris.newPiece(0,0,15,15,  0,16,47,31,  1);  // right_L
+        let all_piece[2] = Tetris.newPiece(32,16,47,31,  0,32,47,47,  2);  // left_L
+        let all_piece[3] = Tetris.newPiece(0,0,31,15,  16,16,47,31, 3); // left_z        
+        let all_piece[4] = Tetris.newPiece(16,0,47,15, 0,16,31,31,  4);  // right_z
+        let all_piece[5] = Tetris.newPiece(0,0,31,15, 32,0,63,15,  5); //stick
+        let all_piece[6] = Tetris.newPiece(0,0,15,31, 16,0,31,31,  6); //box
+
+
+        let seed = z * 3;       // multiply by 3, because it gets in a loop on some even numbers
+        let next_seed = Tetris.randomNumber();
+        do Output.moveCursor(0,0);
+        do Output.printString("Point: ");
+        do Output.printInt(points);
+        do Output.println();
+        do Output.printString("Next Piece: ");
+        while (true){ // The main game loop
+            let j = next_seed;
+            let next_seed = Tetris.randomNumber();
+            let tmp = all_piece[j]; // initializes the coords of the game piece
+            let x1 = tmp[0];
+            let y1 = tmp[1];
+            let x2 = tmp[2];
+            let y2 = tmp[3];
+            let x3 = tmp[4];
+            let y3 = tmp[5];
+            let x4 = tmp[6];
+            let y4 = tmp[7];
+            let piece_number = tmp[8];
+            let p = Piece.new(x1 + 240, y1, x2 + 240, y2, x3 + 240, y3, x4 + 240, y4, piece_number);
+            if (~(p.draw())){ // if a piece tries to spawn above a limit the game ends
+                if (~(Tetris.finish())){ 
+                    return;
+                }
+            }
+            let tmp = all_piece[next_seed];
+            let x1 = tmp[0]; // initializes the coords of the next game piece that is being displayed
+            let y1 = tmp[1];
+            let x2 = tmp[2];
+            let y2 = tmp[3];
+            let x3 = tmp[4];    
+            let y3 = tmp[5];
+            let x4 = tmp[6];
+            let y4 = tmp[7];
+            let piece_number = tmp[8];
+            let nextPiece = Piece.new(x1 + 16, y1 + 32, x2+16, y2 + 32, x3+16, y3 + 32, x4 + 16, y4 + 32, piece_number);
+            do nextPiece.draw();
+            while (p.getMove()){ 
+                let moves = 0;
+                while (moves < 3){ // one can move its piece 3 times before it moves down automatically
+                    let key = Keyboard.keyPressed();
+                    if (key = 130){
+                        do p.moveLeft();
+                        do Sys.wait(80);
+                    }
+                    if (key = 132){
+                        do p.moveRight();
+                        do Sys.wait(80);
+                    }
+                    if (key = 131){
+                        do p.rotate();
+                    }
+                    if (key = 133){
+                        do p.moveDown();
+                        do p.moveDown();
+                    }
+                    let moves = moves +1;
+                }
+                do p.moveDown();
+                let i = i + 1;
+                do Sys.wait(80);
+            }
+            let i = 0;
+            do p.dispose();
+            do Tetris.completeRow();
+            do Output.moveCursor(0,7);
+            do Output.printInt(points);
+            do Screen.setColor(false);
+            do Screen.drawRectangle(16,32,80,96);
+            do Screen.setColor(true);
+            do nextPiece.dispose();
+        }
+        return;
+    }
+    
+    function void completeRow(){ // checks if a row has been completed
+        var int adddress, row, colloum;
+        var bool complete;
+        let adddress = 16384 + 11;
+        let row = 15;
+        while (row > 0){ // for each row
+            let complete = true;
+            let colloum = 0;
+            while ((colloum < 10) & (complete)){ // for each collum 
+                let complete = Memory.peek(adddress + colloum + (row * 512)) & complete;
+                let colloum = colloum + 1;
+            }
+            if (complete){ // removes the row
+                do Screen.setColor(false);
+                do Screen.drawRectangle(176, row * 16, 335, ((row * 16)+ 15) );
+                let points = points + 1;
+                do Tetris.shift(row);
+            }
+            let row = row - 1;
+        }
+        return;
+    }
+    
+    function void shift(int rowShift){ // shifts all rows above the completed one
+        var int j, val, adddress, tmp, k;
+        let adddress = 16384 + 11;
+        while (rowShift > 1){ // each row
+            let j = 0;
+            while (j < 10){ // collum in the game field
+                let k = 0;
+                while (k < 16){ // each line a in 16 x 16 box
+                    let tmp = adddress + j + (((rowShift - 1) * 512) + (k * 32));
+                    let val = Memory.peek(tmp);
+                    do Memory.poke(adddress + j + ((rowShift * 512) + (k * 32)), val);
+                    do Memory.poke(tmp,0);
+                    let k = k+ 1;
+                }
+                let j = j + 1;
+            }
+            let rowShift = rowShift - 1;
+        }
+        return;
+    }
+    
+    function void border(){ // draws a border
+        do Screen.drawLine(175,0,175,255);
+        do Screen.drawLine(336,0,336,255);
+        return;
+    }
+    
+    function Array newPiece(int Ax1, int Ay1, int Ax2, int Ay2, int Ax3, int Ay3, int Ax4, int Ay4,int p){
+        var Array gamepice;
+        let gamepice = Array.new(9);
+        let gamepice[0] = Ax1;
+        let gamepice[1] = Ay1;
+        let gamepice[2] = Ax2;
+        let gamepice[3] = Ay2;
+        let gamepice[4] = Ax3;
+        let gamepice[5] = Ay3;
+        let gamepice[6] = Ax4;
+        let gamepice[7] = Ay4;
+        let gamepice[8] = p;
+        return gamepice;
+    }
+    
+    function int randomNumber(){ // radom number generator
+        var int multiplier,additor,moduler,toBeModulated;
+        let multiplier = 7;
+        let additor = 13;
+        let moduler = 1133;
+        let toBeModulated = (multiplier * seed) + additor;
+        let seed = Tetris.mod(toBeModulated,moduler);
+        return Tetris.mod(seed,7);   
+    }
+    
+    function bool finish(){ // after finishing the game the player has 2 options to start onether or to end the game
+        var char c;
+        do Screen.clearScreen();
+        do Output.moveCursor(10,24);
+        do Output.printString("Your score: ");
+        do Output.printInt(points);
+        do Sys.wait(10000);
+        do Screen.clearScreen();
+        do Output.moveCursor(10,0);
+        do Output.printString("Would you like to play again, for yes click 'Y' and for no 'N':");
+        let c = Keyboard.readChar();
+        if (c = 89){
+            do Screen.clearScreen();
+            return false;
+            }
+        if (c = 78){
+            do Screen.clearScreen();
+            do Sys.halt();
+            }
+        return true;
+    }
+    
+    function int mod(int tbm, int mo){ //simple moduler devision
+        var int val, tmp2;
+        if (tbm < mo){
+            return tbm;
+        }
+        let tmp2 = (tbm / mo) * mo;
+        let val = tbm - tmp2;
+        return val; 
+    }
+}
